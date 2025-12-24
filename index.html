@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>إدارة فصلك</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* خلفية متدرجة متحركة */
+body{
+  font-family:"Tahoma", Arial;
+  background: linear-gradient(135deg, #0b1d3a, #1c2f5a, #0b1d3a);
+  background-size: 400% 400%;
+  animation: bgMove 20s ease infinite;
+  padding:20px;
+  direction:rtl;
+  color:#fff;
+  margin:0;
+}
+@keyframes bgMove{
+  0%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+
+/* عنوان */
+h2{text-align:center; color:#f1f1f1; animation: fadeInDown 0.8s ease;}
+@keyframes fadeInDown{
+  from{opacity:0; transform:translateY(-30px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+/* صندوق */
+.box{
+  background:#1c2f5a;
+  padding:20px;
+  margin-top:20px;
+  border-radius:10px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.4);
+  color:#fff;
+  opacity:0;
+  transform:translateY(20px);
+  animation: fadeInUp 0.6s ease forwards;
+}
+@keyframes fadeInUp{to{opacity:1; transform:translateY(0);}}
+
+/* الأزرار */
+button{
+  padding:10px 18px;
+  margin:8px;
+  font-size:15px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+  transition:all 0.25s ease;
+}
+button:hover{transform: scale(1.07); box-shadow:0 0 12px rgba(255,255,255,0.35);}
+button.addClass{background:#3498db; color:#fff;}
+button.showClasses{background:#9b59b6; color:#fff;}
+button.present{background:#2ecc71; color:#fff;}
+button.absent{background:#e74c3c; color:#fff;}
+button.attendance{background:#f39c12; color:#fff;}
+button.today{background:#16a085; color:#fff;}
+button.deleteClass{background:#e74c3c; color:#fff;}
+button.deleteStudent{background:#c0392b; color:#fff; font-size:12px; padding:4px 8px;}
+
+/* المدخلات */
+input{
+  padding:8px;
+  border-radius:6px;
+  border:1px solid #3b4f84;
+  background:#0e2144;
+  color:#fff;
+  width:280px;
+  max-width:100%;
+}
+
+/* قائمة الفصول */
+#classesList{
+  max-height:0;
+  overflow:hidden;
+  opacity:0;
+  transition:max-height 0.6s ease, opacity 0.6s ease;
+}
+#classesList.show{max-height:500px; opacity:1;}
+#classesList.hide{max-height:0; opacity:0;}
+#classesList button{
+  display:block;
+  margin:10px auto;
+  background:#34495e;
+  color:#fff;
+  width:240px;
+  border-radius:8px;
+  animation: fadeInUp 0.4s ease;
+}
+
+/* تفاصيل الفصل */
+.classDetailsBox{
+  max-height:0;
+  overflow:hidden;
+  opacity:0;
+  transition:max-height 0.6s ease, opacity 0.6s ease;
+}
+.classDetailsBox.show{max-height:1200px; opacity:1;}
+.classDetailsBox.hide{max-height:0; opacity:0;}
+
+/* الغياب اليومي */
+.absToday{
+  background:#2c3e50;
+  border:1px solid #f5b7b1;
+  padding:12px;
+  margin-top:15px;
+  border-radius:8px;
+  color:#f1c40f;
+  font-weight:bold;
+  transform:scale(0.95);
+  opacity:0;
+  animation: popIn 0.5s ease forwards;
+}
+@keyframes popIn{to{transform:scale(1); opacity:1;}}
+
+/* واجهة الحضور */
+.studentBox{text-align:center; margin-top:20px;}
+.studentName{font-size:22px; margin-bottom:15px; font-weight:bold; color:#f1f1f1;}
+.result{font-size:16px; margin-top:10px; color:#ddd;}
+
+/* ريسبونسف خفيف */
+@media (max-width: 768px){
+  h2{font-size:20px;}
+  button{font-size:14px; padding:8px 14px;}
+  input{width:100%;}
+  #classesList button{width:92%;}
+  .box{padding:16px;}
+}
+@media (max-width: 480px){
+  h2{font-size:18px;}
+  button{font-size:13px; padding:7px 12px;}
+  .box{padding:12px;}
+}
+</style>
+</head>
+<body>
+
+<!-- العنوان المطلوب -->
+<h2>📘 إدارة فصلك</h2>
+
+<div style="text-align:center; margin-bottom:20px;">
+  <input id="className" placeholder="اسم الفصل">
+  <button class="addClass" onclick="addClass()">➕ إضافة فصل</button>
+  <button class="showClasses" onclick="toggleClasses()">📂 الفصول</button>
+</div>
+
+<div id="classesList"></div>
+<div id="classDetails"></div>
+
+<script>
+/* بيانات */
+let data = JSON.parse(localStorage.getItem("school")) || {};
+let currentClass = null;
+let studentsList = [];
+let index = 0;
+let present = 0;
+let absent = 0;
+let showList = false;
+let openedClass = null;
+
+function save(){ localStorage.setItem("school", JSON.stringify(data)); }
+
+/* أدوات للأمان/المعرفات */
+function escapeHTML(str){
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+function jsQuote(str){
+  return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+function cssId(str){
+  return String(str).trim().replace(/\s+/g, '_').replace(/[^\w\-]/g, '');
+}
+
+/* إضافة فصل */
+function addClass(){
+  const nameInp = document.getElementById("className");
+  const name = nameInp.value.trim();
+  if(!name) return;
+  if(data[name]){ alert("الفصل موجود بالفعل."); return; }
+  data[name] = { students:{}, attendance:{} };
+  nameInp.value = "";
+  save();
+  renderClasses();
+  const listDiv = document.getElementById("classesList");
+  listDiv.classList.add("show");
+  showList = true;
+}
+
+/* حذف فصل */
+function deleteClass(c){
+  if(confirm("هل تريد حذف الفصل '" + c + "' بالكامل؟ 🗑️")){
+    delete data[c];
+    save();
+    document.getElementById("classDetails").innerHTML = "";
+    if(openedClass === c){ openedClass = null; }
+    renderClasses();
+  }
+}
+
+/* حذف طالب */
+function deleteStudent(c, s){
+  if(confirm("هل تريد حذف الطالب '" + s + "' من الفصل '" + c + "'؟ 🗑️")){
+    delete data[c].students[s];
+    delete data[c].attendance[s];
+    save();
+    showClassDetails(c);
+  }
+}
+
+/* إضافة طالب */
+function addStudent(c){
+  const sid = "s_" + cssId(c);
+  const inp = document.getElementById(sid);
+  if(!inp) return;
+  const name = inp.value.trim();
+  if(!name) return;
+  if(data[c].students[name]){ alert("الطالب موجود بالفعل."); return; }
+  data[c].students[name] = true;
+  data[c].attendance[name] = [];
+  inp.value = "";
+  save();
+  showClassDetails(c);
+}
+
+/* بدء أخذ الغياب */
+function startAttendance(c){
+  currentClass = c;
+  studentsList = Object.keys(data[c].students);
+  index = 0;
+  present = 0;
+  absent = 0;
+  openedClass = c;
+  showClassDetails(c);
+}
+
+/* تأشير الحضور/الغياب */
+function mark(status){
+  if(currentClass == null) return;
+  const student = studentsList[index];
+  const date = new Date().toLocaleDateString();
+
+  if(status === "غايب"){
+    data[currentClass].attendance[student].push(date);
+    absent++;
+  } else { present++; }
+
+  index++;
+  if(index >= studentsList.length){
+    save();
+    alert("تم الانتهاء ✅\n\nعدد الحاضرين: " + present + "\nعدد الغايبين: " + absent);
+    currentClass = null;
+    showClassDetails(openedClass);
+  } else {
+    showClassDetails(currentClass);
+  }
+}
+
+/* عرض غياب اليوم */
+function showTodayAbsences(c){
+  const today = new Date().toLocaleDateString();
+  const absentees = [];
+  for(const s in data[c].attendance){
+    if(data[c].attendance[s].includes(today)){ absentees.push(s); }
+  }
+  const container = document.getElementById("today_" + cssId(c));
+  if(!container) return;
+  if(!absentees.length){
+    container.innerHTML = "<div class='absToday'>لا يوجد غياب اليوم ✅</div>";
+    return;
+  }
+  container.innerHTML = `<div class='absToday'><strong>📅 ${today}</strong><br>الغائبون: ${escapeHTML(absentees.join(" ، "))}</div>`;
+}
+
+/* إظهار/إخفاء الفصول */
+function toggleClasses(){
+  const listDiv = document.getElementById("classesList");
+  if(!showList){
+    showList = true;
+    listDiv.classList.remove("hide");
+    listDiv.classList.add("show");
+    renderClasses();
+  } else {
+    showList = false;
+    listDiv.classList.remove("show");
+    listDiv.classList.add("hide");
+    setTimeout(()=>{ listDiv.innerHTML = ""; }, 600);
+  }
+}
+
+/* بناء قائمة الفصول */
+function renderClasses(){
+  const listDiv = document.getElementById("classesList");
+  listDiv.innerHTML = "";
+  for(const c in data){
+    listDiv.innerHTML += `<button onclick="toggleClassDetails('${jsQuote(c)}')">${escapeHTML(c)}</button>`;
+  }
+}
+
+/* فتح/إغلاق تفاصيل الفصل */
+function toggleClassDetails(c){
+  const detailsDiv = document.getElementById("classDetails");
+  if(openedClass === c){
+    const box = document.querySelector(".classDetailsBox");
+    if(box){
+      box.classList.remove("show");
+      box.classList.add("hide");
+      setTimeout(()=>{ detailsDiv.innerHTML = ""; }, 600);
+    } else {
+      detailsDiv.innerHTML = "";
+    }
+    openedClass = null;
+  } else {
+    openedClass = c;
+    showClassDetails(c);
+  }
+}
+
+/* بناء تفاصيل الفصل */
+function showClassDetails(c){
+  const detailsDiv = document.getElementById("classDetails");
+  detailsDiv.innerHTML = "";
+  if(!c) return;
+
+  // قائمة الطلاب (بدون تاريخ/غ)
+  let studentsHtml = "";
+  for(const s in data[c].students){
+    studentsHtml += `
+      <div>
+        ${escapeHTML(s)}
+        <button class="deleteStudent" onclick="deleteStudent('${jsQuote(c)}','${jsQuote(s)}')">🗑️ حذف</button>
+      </div>`;
+  }
+
+  // واجهة الحضور
+  let attendanceHtml = "";
+  if(currentClass === c && index < studentsList.length){
+    attendanceHtml = `
+      <div class="studentBox">
+        <div class="studentName">${escapeHTML(studentsList[index])}</div>
+        <button class="present" onclick="mark('حاضر')">⭕ حاضر</button>
+        <button class="absent" onclick="mark('غايب')">❌ غايب</button>
+        <div class="result">المتبقي: ${studentsList.length - index - 1}</div>
+      </div>`;
+  }
+
+  // تفاصيل مع أنيميشن + معرفات آمنة
+  detailsDiv.innerHTML = `
+    <div class="classDetailsBox show">
+      <div class="box">
+        <h3>${escapeHTML(c)}</h3>
+        <input id="s_${cssId(c)}" placeholder="اسم الطالب">
+        <button onclick="addStudent('${jsQuote(c)}')">➕ طالب</button>
+        <button class="attendance" onclick="startAttendance('${jsQuote(c)}')">📋 أخذ الغياب</button>
+        <button class="today" onclick="showTodayAbsences('${jsQuote(c)}')">📅 غياب اليوم</button>
+        <button class="deleteClass" onclick="deleteClass('${jsQuote(c)}')">🗑️ حذف الفصل</button>
+        <hr>
+        ${studentsHtml || "لا يوجد طلاب"}
+        ${attendanceHtml}
+        <div id="today_${cssId(c)}"></div>
+      </div>
+    </div>`;
+}
+</script>
+
+</body>
+</html>
